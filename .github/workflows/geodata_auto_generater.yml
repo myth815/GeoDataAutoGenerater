@@ -1,7 +1,7 @@
 name: build-geodata
 on:
   schedule:
-    - cron: '0 22 * * *'        # ＝北京时间 06:00:contentReference[oaicite:3]{index=3}
+    - cron: '0 22 * * *'        # 北京 06:00
   workflow_dispatch:
 
 jobs:
@@ -10,38 +10,33 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    # ↓↓↓ 1. 下载 dat 文件
-    - name: Download geoip/geosite dat
-      run: |
+    # ① 下载 dat
+    - run: |
         BASE=https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download
-        curl -L "$BASE/geoip.dat"    -o geoip.dat
-        curl -L "$BASE/geosite.dat"  -o geosite.dat
+        curl -fL $BASE/geoip.dat   -o geoip.dat
+        curl -fL $BASE/geosite.dat -o geosite.dat
 
-    # ↓↓↓ 2. 下载 geoview 并授予执行权限
-    - name: Download geoview
-      run: |
-        ARCH=$(uname -m)                     # x86_64 / aarch64 / armv7l...
+    # ② 下载 geoview（修正名）
+    - run: |
+        ARCH=$(uname -m)
         case "$ARCH" in
           x86_64)  FILE=geoview-linux-amd64  ;;
           aarch64) FILE=geoview-linux-arm64  ;;
           armv7l)  FILE=geoview-linux-armv7  ;;
-          *) echo "Unsupported arch $ARCH"; exit 1 ;;
         esac
-        curl -L "https://github.com/snowie2000/geoview/releases/latest/download/$FILE" -o geoview
+        curl -fL https://github.com/snowie2000/geoview/releases/latest/download/$FILE -o geoview
         chmod +x geoview
 
-    # ↓↓↓ 3. 解析成六个 .txt
-    - name: Extract txt files
-      run: |
+    # ③ 解析 6 个 TXT
+    - run: |
         ./geoview -type geoip   -input geoip.dat   -list cn,private \
                   -output geoip_cn.txt,geoip_private.txt
         ./geoview -type geosite -input geosite.dat \
                   -list cn,gfw,category-ads-all,geolocation-!cn \
                   -output geosite_cn.txt,geosite_gfw.txt,geosite_category-ads-all.txt,geosite_geolocation-!cn.txt
 
-    # ↓↓↓ 4. 发布到 GitHub Release
-    - name: Publish assets
-      uses: softprops/action-gh-release@v2   # 支持直接上传多个文件:contentReference[oaicite:4]{index=4}
+    # ④ 发布 Release
+    - uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ github.run_number }}
         files: |
