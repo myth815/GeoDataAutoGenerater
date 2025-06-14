@@ -1,21 +1,20 @@
 name: build-geodata
 
-# --- 触发事件 ---------------------------------------------------
 on:
   schedule:
-    - cron: '0 22 * * *'   # UTC 22:00 = 北京 06:00
+    - cron: '0 22 * * *'      # UTC 22:00 = 北京 06:00
   workflow_dispatch:
 
-# --- 必要写权限：解决 403 ---------------------------------------
 permissions:
-  contents: write   # ← 关键！让默认 GITHUB_TOKEN 拥有 Release 写权限
+  contents: write             # 解决 Release 403
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-    # 1) 下载 dat
+    - uses: actions/checkout@v4
+
+    # 1. geoip.dat / geosite.dat
     - name: Download dat
       run: |
         set -eux
@@ -23,39 +22,40 @@ jobs:
         curl -fL $base/geoip.dat   -o geoip.dat
         curl -fL $base/geosite.dat -o geosite.dat
 
-    # 2) 下载 geoview（资产名与截图完全一致）
+    # 2. geoview 二进制（资产名与你截图一致）
     - name: Download geoview
       run: |
         set -eux
         case "$(uname -m)" in
-          x86_64)  fv=geoview-linux-amd64  ;;
-          aarch64) fv=geoview-linux-arm64  ;;
-          armv7l)  fv=geoview-linux-armv7  ;;
-          armv6l)  fv=geoview-linux-armv6  ;;
-          armv5l)  fv=geoview-linux-armv5  ;;
-          i686|i386) fv=geoview-linux-i386 ;;
-          mips)    fv=geoview-linux-mips   ;;
-          mips64)  fv=geoview-linux-mips64 ;;
-          mips64el)fv=geoview-linux-mips64le;;
-          mipsle)  fv=geoview-linux-mipsle ;;
-          riscv64) fv=geoview-linux-riscv64;;
-          *) echo "unsupported arch"; exit 1;;
+          x86_64)   f=geoview-linux-amd64   ;;
+          aarch64)  f=geoview-linux-arm64   ;;
+          armv7l)   f=geoview-linux-armv7   ;;
+          armv6l)   f=geoview-linux-armv6   ;;
+          armv5l)   f=geoview-linux-armv5   ;;
+          i686|i386)f=geoview-linux-i386    ;;
+          mips)     f=geoview-linux-mips    ;;
+          mips64)   f=geoview-linux-mips64  ;;
+          mips64el) f=geoview-linux-mips64le;;
+          mipsle)   f=geoview-linux-mipsle  ;;
+          riscv64)  f=geoview-linux-riscv64 ;;
+          *) echo "unsupported arch"; exit 1 ;;
         esac
-        curl -fL "https://github.com/snowie2000/geoview/releases/latest/download/$fv" -o geoview
+        curl -fL "https://github.com/snowie2000/geoview/releases/latest/download/$f" -o geoview
         chmod +x geoview
 
-    # 3) 解析 6 个 txt  (geoview 支持一次导出多文件，参数格式为 逗号分隔)
-    - name: Extract txt
+    # 3. 逐一生成 6 个 txt
+    - name: Extract TXT files
       run: |
         set -eux
-        ./geoview -type geoip   -input geoip.dat   -list cn,private \
-                  -output geoip_cn.txt,geoip_private.txt
-        ./geoview -type geosite -input geosite.dat \
-                  -list cn,gfw,category-ads-all,geolocation-!cn \
-                  -output geosite_cn.txt,geosite_gfw.txt,geosite_category-ads-all.txt,geosite_geolocation-!cn.txt
+        ./geoview -type geoip   -input geoip.dat   -list cn        -output geoip_cn.txt
+        ./geoview -type geoip   -input geoip.dat   -list private   -output geoip_private.txt
+        ./geoview -type geosite -input geosite.dat -list cn        -output geosite_cn.txt
+        ./geoview -type geosite -input geosite.dat -list gfw       -output geosite_gfw.txt
+        ./geoview -type geosite -input geosite.dat -list category-ads-all      -output geosite_category-ads-all.txt
+        ./geoview -type geosite -input geosite.dat -list geolocation-!cn       -output geosite_geolocation-!cn.txt
 
-    # 4) 创建 / 更新 Release 并上传 8 个文件
-    - name: Publish release
+    # 4. 统一发布到 Release
+    - name: Publish assets
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ github.run_number }}
