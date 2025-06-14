@@ -1,0 +1,40 @@
+name: build-geodata
+on:
+  schedule:         # ⚠ GitHub cron 按 UTC 触发，没有时区参数:contentReference[oaicite:0]{index=0}:contentReference[oaicite:1]{index=1}
+    - cron: '0 22 * * *'   # = 北京时间 06:00 每天
+  workflow_dispatch:       # 手动触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    # 下载 geoip.dat / geosite.dat（Loyalsoldier 每日 Release）:contentReference[oaicite:2]{index=2}
+    - name: Download dat
+      run: |
+        base=https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download
+        curl -L $base/geoip.dat    -o geoip.dat
+        curl -L $base/geosite.dat  -o geosite.dat
+
+    # 下载 geoview 静态 Linux 版并解压:contentReference[oaicite:3]{index=3}
+    - name: Fetch geoview
+      run: |
+        curl -L https://github.com/snowie2000/geoview/releases/latest/download/geoview-linux64 -o geoview
+        chmod +x geoview
+
+    # 解析成六个 TXT
+    - name: Extract txt
+      run: |
+        ./geoview -type geoip  -input geoip.dat   -list cn,private        -output geoip_cn.txt,geoip_private.txt
+        ./geoview -type geosite -input geosite.dat -list cn,gfw,category-ads-all,geolocation-!cn \
+                     -output geosite_cn.txt,geosite_gfw.txt,geosite_category-ads-all.txt,geosite_geolocation-!cn.txt
+
+    # 上传到 Release 当天 Tag（也可改为 push 到 main 分支）
+    - name: Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ github.run_number }}
+        files: |
+          *.dat
+          *.txt
