@@ -1,44 +1,64 @@
 name: build-geodata
+
 on:
+  # 每日 UTC 22:00（= 北京 06:00）自动触发
   schedule:
-    - cron: '0 22 * * *'        # 北京 06:00
+    - cron: '0 22 * * *'
+  # 手动触发
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
+    # 1. 取仓库代码（如需在 Release 里附带脚本，可保留）
     - uses: actions/checkout@v4
 
-    # ① 下载 dat
-    - run: |
+    # 2. 下载最新 geoip.dat / geosite.dat
+    - name: Download dat files
+      run: |
+        set -eux
         BASE=https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download
-        curl -fL $BASE/geoip.dat   -o geoip.dat
-        curl -fL $BASE/geosite.dat -o geosite.dat
+        curl -fL "$BASE/geoip.dat"    -o geoip.dat
+        curl -fL "$BASE/geosite.dat"  -o geosite.dat
 
-    # ② 下载 geoview（修正名）
-    - run: |
-        ARCH=$(uname -m)
+    # 3. 下载 geoview (根据 Runner 架构自动选取正确资产名)
+    - name: Download geoview binary
+      run: |
+        set -eux
+        ARCH=$(uname -m)         # x86_64 / aarch64 / armv7l ...
         case "$ARCH" in
           x86_64)  FILE=geoview-linux-amd64  ;;
-          aarch64) FILE=geoview-linux-arm64  ;;
-          armv7l)  FILE=geoview-linux-armv7  ;;
+          aarch64) FILE=geoview-linux-arm64 ;;
+          armv7l)  FILE=geoview-linux-armv7 ;;
+          *) echo "Unsupported arch $ARCH"; exit 1 ;;
         esac
-        curl -fL https://github.com/snowie2000/geoview/releases/latest/download/$FILE -o geoview
+        curl -fL "https://github.com/snowie2000/geoview/releases/latest/download/$FILE" -o geoview
         chmod +x geoview
+        file geoview            # 调试用，可注释
 
-    # ③ 解析 6 个 TXT
-    - run: |
+    # 4. 解析生成 6 个 .txt
+    - name: Extract TXT files
+      run: |
+        set -eux
         ./geoview -type geoip   -input geoip.dat   -list cn,private \
                   -output geoip_cn.txt,geoip_private.txt
         ./geoview -type geosite -input geosite.dat \
                   -list cn,gfw,category-ads-all,geolocation-!cn \
                   -output geosite_cn.txt,geosite_gfw.txt,geosite_category-ads-all.txt,geosite_geolocation-!cn.txt
 
-    # ④ 发布 Release
-    - uses: softprops/action-gh-release@v2
+    # 5. 发布 Release，tag 用流水号或日期皆可
+    - name: Publish assets
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ github.run_number }}
         files: |
-          geoip*.*
-          geosite*.*
+          geoip.dat
+          geosite.dat
+          geoip_cn.txt
+          geoip_private.txt
+          geosite_cn.txt
+          geosite_gfw.txt
+          geosite_category-ads-all.txt
+          geosite_geolocation-!cn.txt
