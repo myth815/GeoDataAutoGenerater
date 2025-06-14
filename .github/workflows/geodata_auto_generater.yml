@@ -1,21 +1,17 @@
 name: build-geodata
 
 on:
-  # 每日 UTC 22:00（= 北京 06:00）自动触发
+  # ★ 每日 UTC 22 点；即北京时间 06 点
   schedule:
     - cron: '0 22 * * *'
-  # 手动触发
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-    # 1. 取仓库代码（如需在 Release 里附带脚本，可保留）
-    - uses: actions/checkout@v4
 
-    # 2. 下载最新 geoip.dat / geosite.dat
+    # 1) 下载最新版 geoip.dat / geosite.dat ─ 来源：Loyalsoldier/v2ray-rules-dat
     - name: Download dat files
       run: |
         set -eux
@@ -23,22 +19,32 @@ jobs:
         curl -fL "$BASE/geoip.dat"    -o geoip.dat
         curl -fL "$BASE/geosite.dat"  -o geosite.dat
 
-    # 3. 下载 geoview (根据 Runner 架构自动选取正确资产名)
+    # 2) 根据 Runner 架构挑选正确的 geoview 二进制
     - name: Download geoview binary
       run: |
         set -eux
-        ARCH=$(uname -m)         # x86_64 / aarch64 / armv7l ...
+        ARCH=$(uname -m)          # 常见输出：x86_64 / aarch64 / armv7l / armv6l / armv5l / i686 ...
         case "$ARCH" in
-          x86_64)  FILE=geoview-linux-amd64  ;;
-          aarch64) FILE=geoview-linux-arm64 ;;
-          armv7l)  FILE=geoview-linux-armv7 ;;
-          *) echo "Unsupported arch $ARCH"; exit 1 ;;
+          x86_64)  FILE=geoview-linux-amd64   ;;  # 64-bit x86
+          aarch64) FILE=geoview-linux-arm64   ;;  # 64-bit ARM
+          armv7l)  FILE=geoview-linux-armv7   ;;  # 32-bit ARMv7
+          armv6l)  FILE=geoview-linux-armv6   ;;  # 32-bit ARMv6
+          armv5l)  FILE=geoview-linux-armv5   ;;  # 32-bit ARMv5
+          i686|i386) FILE=geoview-linux-i386  ;;  # 32-bit x86
+          mips)    FILE=geoview-linux-mips    ;;
+          mips64)  FILE=geoview-linux-mips64  ;;
+          mips64el)FILE=geoview-linux-mips64le;;
+          mipsle)  FILE=geoview-linux-mipsle  ;;
+          riscv64) FILE=geoview-linux-riscv64 ;;
+          *) echo "Unsupported architecture: $ARCH"; exit 1 ;;
         esac
-        curl -fL "https://github.com/snowie2000/geoview/releases/latest/download/$FILE" -o geoview
+        curl -fL "https://github.com/snowie2000/geoview/releases/latest/download/${FILE}" -o geoview
         chmod +x geoview
-        file geoview            # 调试用，可注释
+        # 调试：确保下载的是真正 ELF，可选
+        file geoview
+        stat -c%s geoview          # 正常应 >1 MB
 
-    # 4. 解析生成 6 个 .txt
+    # 3) 使用 geoview 解析出六个 TXT
     - name: Extract TXT files
       run: |
         set -eux
@@ -48,7 +54,7 @@ jobs:
                   -list cn,gfw,category-ads-all,geolocation-!cn \
                   -output geosite_cn.txt,geosite_gfw.txt,geosite_category-ads-all.txt,geosite_geolocation-!cn.txt
 
-    # 5. 发布 Release，tag 用流水号或日期皆可
+    # 4) 作为 Release 资产一次性发布
     - name: Publish assets
       uses: softprops/action-gh-release@v2
       with:
